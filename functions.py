@@ -66,6 +66,9 @@ def ImgGrad(img, mode = 'Sobel'):
   elif mode == 'Sobel':
     x_kernal = np.matrix([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
     y_kernal = np.matrix([[-1,-2,-1],[0,0,0],[1,2,1]])
+  elif mode == 'Gravity':
+    x_kernal = np.matrix([[-1*(math.sqrt(2)/4), 0, (math.sqrt(2)/4)], [-1, 0, 1], [-1*(math.sqrt(2)/4), 0, (math.sqrt(2)/4)]])
+    y_kernal = np.matrix([[(math.sqrt(2)/4),1,(math.sqrt(2)/4)],[0,0,0],[-1*(math.sqrt(2)/4),-1,1*(math.sqrt(2)/4)]])
   else: #uses sobel for non implemented modes
     x_kernal = np.matrix([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
     y_kernal = np.matrix([[-1,-2,-1],[0,0,0],[1,2,1]])
@@ -139,7 +142,7 @@ def NonMaxSuppress(img_mag,img_ang,thresh):
   b1 = 0
   b2 = 0
 
-  #not using linear interpolation
+  
   for y in range(1,img_size[0]-1):
     for x in range(1,img_size[1]-1):
 
@@ -245,7 +248,45 @@ def Hysteresis(img,high_thresh,low_thresh):
 
   return filt_img
 
+#without the gravity part
+def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.8,k_coef = 1.4):
 
+  gaus_kern = GaussianKernal(gaus_size, sigma)
+
+  gaus_filt = ImgConvolve(img,gaus_kern)
+
+  grad_img, grad_ang = ImgGrad(gaus_filt,mode)
+
+  
+
+  avg = 0
+
+  img_shape = np.shape(img)
+
+  
+
+  for i in range(img_shape[0]):
+    for j in range(img_shape[1]):
+      avg += grad_img[i,j]
+
+  avg = avg/(img_shape[0]*img_shape[1])
+
+  imprv_sigma = 0
+
+  for i in range(img_shape[0]):
+    for j in range(img_shape[1]):
+      imprv_sigma += (abs(grad_img[i,j] - avg))**2
+
+  imprv_sigma = imprv_sigma / (img_shape[0]*img_shape[1])
+  imprv_sigma = math.sqrt(imprv_sigma)
+  high_thresh = avg + (k_coef*imprv_sigma)
+  low_thresh = high_thresh/2
+
+  max_supr_img = NonMaxSuppress(grad_img,grad_ang,high_thresh)
+
+  filt_img = Hysteresis(max_supr_img,high_thresh,low_thresh)
+
+  return filt_img
 
 def CannyEdge(img,gaus_size = 11, sigma = 1,mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
 

@@ -1,5 +1,5 @@
 
-from functions import  CannyEdge
+from functions import  CannyEdge, ImprovedCanny
 #GaussianKernal, ImgConvolve, ImgGrad, NonMaxSuppress, Hysteresis now internal functions
 from PIL import Image
 import numpy as np
@@ -20,19 +20,20 @@ def main():
     canny_img = CannyEdge(cur_img,gaus_size = 11, sigma = 1,mode= 'Sobel', 
                           max_thrsh = 0.8, hys_h_thrsh=0.6, hys_l_thrsh=0.3)
 
-
+    imprv_canny = ImprovedCanny(cur_img,gaus_size = 11, sigma = 1,mode= 'Gravity', 
+                          max_thrsh = 0.8, k_coef=2)
 
 
     plt.figure(1)
     plt.subplot(1,2,1)
-    plt.imshow(cur_img,cmap='grey')
-    plt.axis('off')
-    plt.title("Original")
-
-    plt.subplot(1,2,2)
     plt.imshow(canny_img,cmap='grey')
     plt.axis('off')
-    plt.title("Canny Edge Detector")
+    plt.title("Canny Edge")
+
+    plt.subplot(1,2,2)
+    plt.imshow(imprv_canny,cmap='grey')
+    plt.axis('off')
+    plt.title("Improved Canny")
     plt.show()
 
     
