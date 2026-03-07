@@ -23,11 +23,13 @@ def GaussianKernal(wsize,sigma):
       sum = sum + gaus_kernel[i][j]
 
   if sum > 1.1 or sum < 0.9:
-    kernel = kernel * 1/sum
-    sum = np.sum(kernel)
+    gaus_kernel = gaus_kernel * 1/sum
+    sum = np.sum(gaus_kernel)
 
 
-  out = gaus_kernel #Gaussian normalized
+  return gaus_kernel 
+
+
 
 
 def ImgConvolve(img, kernel):
@@ -53,20 +55,208 @@ def ImgConvolve(img, kernel):
   return img_conv
 
 
-def SobelGrad(img):
+def ImgGrad(img, mode = 'Sobel'):
   
-    sob_kernal_x = np.matrix([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
-    sob_kernal_y = np.matrix([[-1,-2,-1],[0,0,0],[1,2,1]])
+  x_kernal = np.zeros((3,3))
+  y_kernal = np.zeros((3,3))
 
-    sob_grad_x = ImgConvolve(img,sob_kernal_x)
-    sob_grad_y = ImgConvolve(img,sob_kernal_y)
+  if mode == 'Prewitt':
+    x_kernal = np.matrix([[1, 0, -1], [1, 0, -1], [1, 0, -1]])
+    y_kernal = np.matrix([[1,1,1],[0,0,0],[-1,-1,-1]])
+  elif mode == 'Sobel':
+    x_kernal = np.matrix([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    y_kernal = np.matrix([[-1,-2,-1],[0,0,0],[1,2,1]])
+  else: #uses sobel for non implemented modes
+    x_kernal = np.matrix([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
+    y_kernal = np.matrix([[-1,-2,-1],[0,0,0],[1,2,1]])
+
+  grad_x = ImgConvolve(img,x_kernal)
+  grad_y = ImgConvolve(img,y_kernal)
 
 
-    SobelGradImg = np.zeros(np.shape(img))
+  GradImg = np.zeros(np.shape(img))
+  ImgAng = np.zeros(np.shape(img))
 
-    for i in range(np.shape(sob_grad_x)[0]):
-        for j in range(np.shape(sob_grad_x)[1]):
+  for i in range(np.shape(grad_x)[0]):
+    for j in range(np.shape(grad_y)[1]):
 
-            SobelGradImg[i][j] = math.sqrt((sob_grad_x[i,j]**2)+(sob_grad_y[i,j]**2))
+      GradImg[i,j] = math.sqrt((grad_x[i,j]**2)+(grad_y[i,j]**2))
+      ImgAng[i,j] = math.atan2(grad_y[i,j],grad_x[i,j])
 
-    return SobelGradImg
+  return GradImg, ImgAng
+  
+
+#4 directional diagonal not included
+def SupressHelper(ang,y,x):
+  #y is row, x is col
+  #b is closest point a is second closest
+  
+  
+  if ang < (math.pi/4):
+    alpha = math.tan(ang)
+    b1 = (y,x+1)
+    a1 = (y-1,x+1)
+    b2 = (y,x-1)
+    a2 = (y+1,x-1)
+    
+  elif ang < (math.pi/2):
+    alpha = 1/math.tan(ang)
+    b1 = (y-1,x)
+    a1 = (y-1,x+1)
+    b2 = (y+1,x)
+    a2 = (y+1,x-1)
+
+  elif ang < (math.pi*(3/4)):
+    alpha = -1*(1/math.tan(ang))
+    b1 = (y-1,x)
+    a1 = (y-1,x-1)
+    b2 = (y+1,x)
+    a2 = (y+1,x+1)
+
+  else:
+    alpha = -1*math.tan(ang)
+    b1 = (y,x-1)
+    a1 = (y-1,x-1)
+    b2 = (y,x+1)
+    a2 = (y+1,x+1)
+
+  return alpha,a1,a2,b1,b2
+
+def NonMaxSuppress(img_mag,img_ang,thresh):
+
+  img_sup = np.zeros(np.shape(img_mag))
+
+  img_size = np.shape(img_mag)
+  
+  thresh_val = np.max(img_mag)*thresh
+  
+
+  val_1 = 0
+  val_2 = 0
+  alpha = 0
+  a1 = 0
+  a2 = 0
+  b1 = 0
+  b2 = 0
+
+  #not using linear interpolation
+  for y in range(1,img_size[0]-1):
+    for x in range(1,img_size[1]-1):
+
+      if img_mag[y,x] > thresh_val:
+        img_sup[y,x] = img_mag[y,x]
+        continue
+      
+
+      cur_ang = abs(img_ang[y,x])
+      alpha,a1,a2,b1,b2 = SupressHelper(cur_ang,y,x)
+      val_1 = alpha*img_mag[b1] + (1-alpha)*img_mag[a1]
+      val_2 = alpha*img_mag[b2] + (1-alpha)*img_mag[a2]
+
+      if img_mag[y,x] > max(val_1,val_2):
+        img_sup[y,x] = img_mag[y,x]
+
+  return img_sup
+
+
+def UpdateLevels(img_levels,follow_points,found):
+
+  if found:
+    for i in range(np.shape(img_levels)[0]):
+      for j in range(np.shape(img_levels)[1]):
+        if follow_points[i,j] == 0:
+          continue
+        if img_levels[i,j] == 1:
+          img_levels[i,j] += 1 
+          
+  else:
+    for i in range(np.shape(img_levels)[0]):
+      for j in range(np.shape(img_levels)[1]):
+        if follow_points[i,j] == 0:
+          continue
+        if img_levels[i,j] == 1:
+          img_levels[i,j] -= 1 
+          
+
+  return
+
+def FollowPath(img_levels,follow_points,cur_point,found):
+  cur_i = cur_point[0]
+  cur_j = cur_point[1]
+  for i in range(-1,2):
+    if cur_i+i<0 or cur_i+i>=np.shape(img_levels)[0]:
+      continue
+    for j in range(-1,2):
+      if cur_j+j<0 or cur_j+j>=np.shape(img_levels)[1]:
+        continue
+
+      if img_levels[cur_i+i,cur_j+j] > 0 and follow_points[cur_i+i,cur_j+j] == 0:
+        follow_points[cur_i+i,cur_j+j] = 1
+        if img_levels[cur_i+i,cur_j+j] > 1:
+          found = True
+        found = FollowPath(img_levels,follow_points,(cur_i+i,cur_j+j),found)
+
+
+  return found
+
+
+def Hysteresis(img,high_thresh,low_thresh):
+
+  img_size = np.shape(img)
+
+  img_levels = np.zeros(img_size)
+
+  filt_img = np.zeros(img_size)
+
+  high_val = high_thresh*np.max(img)
+  low_val = low_thresh*np.max(img)
+
+  for i in range(img_size[0]):
+    for j in range(img_size[1]):
+      if img[i,j]>high_val:
+        #filt_img[i,j] = img[i,j] does this later anyway no need to do it twice
+        img_levels[i,j] = 2
+      elif img[i,j]>low_val:
+        img_levels[i,j] = 1
+
+  follow_points = np.zeros((img_size[0]+1,img_size[1]+1))
+
+  for i in range(img_size[0]):
+    for j in range(img_size[1]):
+      if img_levels[i,j] != 1:
+        continue
+      for k in range(-1,2):
+        if i+k<0 or i+k>=img_size[0]:
+          continue
+        for kk in range(-1,2):
+          if j+kk<0 or j+kk>=img_size[1]:
+            continue
+          if img_levels[i+k,j+kk] == 1:
+            follow_points[i,j] = 1
+            found = FollowPath(img_levels,follow_points,(i+k,j+kk),False)
+            UpdateLevels(img_levels,follow_points,found)
+            follow_points[:,:] = 0
+
+  for i in range(img_size[0]):
+    for j in range(img_size[1]):
+      if img_levels[i,j] >= 1:
+        filt_img[i,j] = img[i,j]
+
+
+  return filt_img
+
+
+
+def CannyEdge(img,gaus_size = 11, sigma = 1,mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
+
+  gaus_kern = GaussianKernal(gaus_size, sigma)
+
+  gaus_filt = ImgConvolve(img,gaus_kern)
+
+  grad_img, grad_ang = ImgGrad(gaus_filt,mode)
+
+  max_supr_img = NonMaxSuppress(grad_img,grad_ang,max_thrsh)
+
+  filt_img = Hysteresis(max_supr_img,hys_h_thrsh,hys_l_thrsh)
+
+  return filt_img
