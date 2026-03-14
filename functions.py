@@ -301,3 +301,78 @@ def CannyEdge(img,gaus_size = 11, sigma = 1,mode = 'Sobel', max_thrsh = 0.8, hys
   filt_img = Hysteresis(max_supr_img,hys_h_thrsh,hys_l_thrsh)
 
   return filt_img
+
+
+def Snake(img,x,y, alpha = 1, gamma = 1, beta = 1, GradT = 1, window_size = 11, k = 20):
+
+  img_size = np.shape(img)
+
+  #window size needs to be odd
+  if window_size%2 == 0:
+    window_size += 1
+
+  eps = 1e-8
+
+  global_norm = GradT * (np.max(img) - np.min(img))
+  pos_buf = math.floor(window_size/2)
+  padded_img = np.pad(img,pos_buf)
+
+  x = x + pos_buf
+  y = y + pos_buf
+  x_prev = x[-1]
+  y_prev = y[-1]
+
+  numSeeds = len(x)
+
+  Econt = np.zeros((window_size,window_size))
+  Ecurv = np.zeros((window_size,window_size))
+
+
+  for i in range(k):
+    for j in range(numSeeds):
+      nx_sd = j+1
+
+      if nx_sd >= numSeeds:
+        nx_sd = 0
+
+      Econt = Econt*0
+      Ecurv = Ecurv*0
+      #col,row indexing for some reason
+      Egrad = padded_img[(y[j]-pos_buf):(y[j]+pos_buf+1),(x[j]-pos_buf):(x[j]+pos_buf+1)]
+      for w in range(-pos_buf,pos_buf+1):
+
+        cur_x = x[j]+w
+        for h in range(-pos_buf,pos_buf+1):
+          cur_y = y[j]+h
+          Econt[w+pos_buf,h+pos_buf] = (x[nx_sd]-cur_x)**2 +(cur_x- x_prev)**2 + (y[nx_sd]-cur_y)**2 + (cur_y - y_prev)**2
+          Ecurv[w+pos_buf,h+pos_buf] = (x[nx_sd] - 2*(cur_x) + x_prev)**2 + (y[nx_sd]-2*(cur_y) + y_prev)**2
+
+      #normalize
+
+      cont_range = max((np.max(Econt)-np.min(Econt)),eps)
+      Econt = Econt - np.min(Econt)
+      Econt = Econt * (alpha/(2*cont_range))
+      curv_range = max((np.max(Ecurv)-np.min(Ecurv)),eps)
+      Ecurv = Ecurv - np.min(Ecurv)
+      Ecurv = Ecurv * (beta/(2*curv_range))
+
+      grad_norm = max((np.max(Egrad)-np.min(Egrad)),global_norm)
+      Egrad = Egrad - np.min(Egrad)
+      Egrad = Egrad *(gamma/grad_norm)
+      Etot = Ecurv + Econt - Egrad
+
+      min_row, min_col = np.unravel_index(np.argmin(Etot), Etot.shape)
+
+      x_prev = x[j]
+      y_prev = y[j]
+      x[j] = x[j] + min_row - pos_buf
+      y[j] = y[j] + min_col - pos_buf
+      
+
+  img_fin = np.zeros(img_size)
+
+  for kk in range(numSeeds):
+    img_fin[y[kk],x[kk]] = 255
+
+
+  return img_fin
