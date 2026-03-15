@@ -2,6 +2,7 @@ import numpy as np
 import math
 import scipy
 
+#Returns Gaussian Kernal of set size
 def GaussianKernal(wsize,sigma):
 
   if wsize % 2 == 0:
@@ -30,8 +31,37 @@ def GaussianKernal(wsize,sigma):
   return gaus_kernel 
 
 
+def LoGKernal(wsize,sigma):
+
+  kernel = GaussianKernal(wsize,sigma)
+
+  offset = (wsize - 1)/2
+
+  coef_factor = 2*math.pi
+  
+  sum = 0
+
+  for i in range(wsize):
+    for j in range(wsize):
+      x = i - offset
+      y = j - offset
+      # gaussian kernel has coef of 1/ 2*pi*sigma^2
+      # so multiplying by 2*pi*(x^2 + y^2 - 2sigma^2) will convert to LoG
+      log_coef = ((x**2) + (y**2) - 2*(sigma**2)) / (sigma**2)
+      kernel[i][j] = kernel[i][j] * coef_factor * log_coef
+
+      sum = kernel[i][j] + sum
+  #LoG kernal should be sum zero
+  if sum > 0.05 or sum < -0.05:
+    mean = sum/(wsize**2)
+    kernel = kernel - mean
+    sum = np.sum(kernel)
+
+  return kernel
 
 
+
+#convoles an image with a given kernal
 def ImgConvolve(img, kernel):
   
 
@@ -55,7 +85,10 @@ def ImgConvolve(img, kernel):
   return img_conv
 
 
-def ImgGrad(img, mode = 'Sobel'):
+
+
+#Convolutes image with a given kernal reutrns magnitude and angle, using sobel or Prewitt is usually considered the image gradient
+def ImgGrad(img, mode = 'Sobel',):
   
   x_kernal = np.zeros((3,3))
   y_kernal = np.zeros((3,3))
@@ -69,6 +102,9 @@ def ImgGrad(img, mode = 'Sobel'):
   elif mode == 'Gravity':
     x_kernal = np.matrix([[-1*(math.sqrt(2)/4), 0, (math.sqrt(2)/4)], [-1, 0, 1], [-1*(math.sqrt(2)/4), 0, (math.sqrt(2)/4)]])
     y_kernal = np.matrix([[(math.sqrt(2)/4),1,(math.sqrt(2)/4)],[0,0,0],[-1*(math.sqrt(2)/4),-1,1*(math.sqrt(2)/4)]])
+
+  
+
   else: #uses sobel for non implemented modes
     x_kernal = np.matrix([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
     y_kernal = np.matrix([[-1,-2,-1],[0,0,0],[1,2,1]])
@@ -88,13 +124,11 @@ def ImgGrad(img, mode = 'Sobel'):
 
   return GradImg, ImgAng
   
-
-#4 directional diagonal not included
+#Helps NonMaxSuppress function by giving correct directions
 def SupressHelper(ang,y,x):
   #y is row, x is col
   #b is closest point a is second closest
-  
-  
+
   if ang < (math.pi/4):
     alpha = math.tan(ang)
     b1 = (y,x+1)
@@ -125,6 +159,7 @@ def SupressHelper(ang,y,x):
 
   return alpha,a1,a2,b1,b2
 
+#suppresses points where the direction of gradient isn't maximum
 def NonMaxSuppress(img_mag,img_ang,thresh):
 
   img_sup = np.zeros(np.shape(img_mag))
@@ -202,7 +237,7 @@ def FollowPath(img_levels,follow_points,cur_point,found):
 
   return found
 
-
+# performs hysteresis
 def Hysteresis(img,high_thresh,low_thresh):
 
   img_size = np.shape(img)
@@ -248,7 +283,7 @@ def Hysteresis(img,high_thresh,low_thresh):
 
   return filt_img
 
-#without the gravity part
+#Not working properly
 def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.8,k_coef = 1.4):
 
   gaus_kern = GaussianKernal(gaus_size, sigma)
@@ -288,13 +323,34 @@ def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.
 
   return filt_img
 
-def CannyEdge(img,gaus_size = 11, sigma = 1,mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
 
-  gaus_kern = GaussianKernal(gaus_size, sigma)
+def ImgSharpen(img,sigma,kern_size):
 
-  gaus_filt = ImgConvolve(img,gaus_kern)
+  kernal = LoGKernal(kern_size, sigma)
 
-  grad_img, grad_ang = ImgGrad(gaus_filt,mode)
+  sharp_img = ImgConvolve(img,kernal)
+
+  return sharp_img
+
+#Canny edge detector algorithm
+def CannyEdge(img,gaus_size = 11, sigma = 1,filt_mode = 'Gaussian', grad_mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
+
+  
+
+  if filt_mode == 'LoG':
+    LoG_kernal = LoGKernal(gaus_size,sigma)
+    first_filt = ImgConvolve(img,LoG_kernal)
+
+  elif filt_mode == GaussianKernal:
+    gaus_kern = GaussianKernal(gaus_size, sigma)
+    first_filt = ImgConvolve(img,gaus_kern)
+
+  else: #Gaussian Blur for unknown mode
+    gaus_kern = GaussianKernal(gaus_size, sigma)
+    first_filt = ImgConvolve(img,gaus_kern)
+  
+
+  grad_img, grad_ang = ImgGrad(first_filt,grad_mode)
 
   max_supr_img = NonMaxSuppress(grad_img,grad_ang,max_thrsh)
 
