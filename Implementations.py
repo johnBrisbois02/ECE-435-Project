@@ -32,9 +32,6 @@ def main():
     sharpened_img = sharpened_img * 255/(np.max(sharpened_img))
 
 
-    #print(np.max(sharpened_img))
-    #print(np.min(sharpened_img))
-
     sharp_canny = CannyEdge(cur_img,gaus_size = 11, sigma = 0.6, filt_mode='LoG' ,grad_mode= 'Sobel', 
                           max_thrsh = 0.7, hys_h_thrsh=0.6, hys_l_thrsh=0.3)
 
