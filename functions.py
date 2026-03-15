@@ -283,6 +283,50 @@ def Hysteresis(img,high_thresh,low_thresh):
 
   return filt_img
 
+def HistEqual(im):
+
+
+  img_dim = np.shape(im)
+
+  tot_pixel = img_dim[0]*img_dim[1]
+
+  hist = np.zeros(256)
+
+  for i in range(img_dim[0]):
+    for j in range(img_dim[1]):
+
+      cur_val = round(im[i,j])
+      hist[cur_val] = hist[cur_val] + 1
+
+
+  orgHist = np.copy(hist)
+
+  hist_cdf = np.zeros(256)
+  hist_cdf[0] = hist[0]/tot_pixel
+  for i in range(1,255):
+    hist_cdf[i] = hist_cdf[i-1] + hist[i]/tot_pixel
+    hist_cdf[i-1] = round(255*hist_cdf[i-1])
+  hist_cdf[255] = round(255*hist_cdf[255])
+
+
+  equal_img = np.copy(im)
+  heHist = np.zeros(256)
+
+  for i in range(img_dim[0]):
+    for j in range(img_dim[1]):
+
+      cur_lev = round(equal_img[i][j])
+      new_lev = round(hist_cdf[cur_lev])
+      equal_img[i][j] = new_lev
+      heHist[new_lev] = heHist[new_lev] + 1
+
+  
+
+  imgHE = equal_img
+
+
+  return imgHE
+
 #Not working properly
 def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.8,k_coef = 1.4):
 

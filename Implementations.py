@@ -1,5 +1,5 @@
 
-from functions import  CannyEdge, ImprovedCanny, Snake, ImgSharpen
+from functions import  CannyEdge, ImprovedCanny, Snake, ImgSharpen, HistEqual
 #GaussianKernal, ImgConvolve, ImgGrad, NonMaxSuppress, Hysteresis now internal functions
 from PIL import Image
 import numpy as np
@@ -24,7 +24,7 @@ def main():
     #canny_img_prewitt = CannyEdge(cur_img,gaus_size = 11, sigma = 2 ,mode= 'Prewitt', 
     #                      max_thrsh = 0.7, hys_h_thrsh=0.6, hys_l_thrsh=0.3)
 
-   
+    #equal_img = HistEqual(cur_img)
 
     sharpened_img = ImgSharpen(cur_img,sigma = 2, kern_size=17)
 
