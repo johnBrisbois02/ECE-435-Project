@@ -85,8 +85,6 @@ def ImgConvolve(img, kernel):
   return img_conv
 
 
-
-
 #Convolutes image with a given kernal reutrns magnitude and angle, using sobel or Prewitt is usually considered the image gradient
 def ImgGrad(img, mode = 'Sobel',):
   
@@ -283,6 +281,7 @@ def Hysteresis(img,high_thresh,low_thresh):
 
   return filt_img
 
+
 def HistEqual(im):
 
 
@@ -327,7 +326,207 @@ def HistEqual(im):
 
   return imgHE
 
+
+
+def EdgeDensity(canny_img,loc,window_size):
+  img_shape = np.shape(canny_img)
+  start_i = loc[0]-math.floor(window_size/2)
+  start_j = loc[1]-math.floor(window_size/2)
+
+  end_i = loc[0]+math.floor(window_size/2)
+  end_j = loc[1]+math.floor(window_size/2)
+
+  if end_i>=img_shape[0]:
+    end_i = img_shape[0]
+  if end_j>=img_shape[1]:
+    end_j = img_shape[1]
+
+  #val = np.sum(canny_img[start_i:end_i,start_j:end_j]) / ((end_i-start_i)+(end_j - start_j))
+  val = np.sum(canny_img[start_i:end_i,start_j:end_j])
+  return val
+
+#start with tenegrad, returns pixel (location_val - avg)^2
+def FocusValMean(img,loc,window_size):
+
+  
+  start_i = loc[0]-math.floor(window_size/2)
+  start_j = loc[1]-math.floor(window_size/2)
+
+  img_shape = np.shape(img)
+
+  end_i = loc[0]+math.floor(window_size/2)
+  end_j = loc[1]+math.floor(window_size/2)
+
+  norm_val = (end_i-start_i) + (end_j-start_j)
+
+  avg = np.sum(img[start_i:end_i,start_j:end_j])
+
+  
+
+  return (avg/norm_val)
+
+
 #Not working properly
+
+
+
+def CheckNeighbour(focus_img,mask_img,focus_thresh,canny_img,sim_thresh,loc,window_size):
+
+  loc_i = loc[0]
+  loc_j = loc[1]
+  changed = False
+
+  for i in range(-1,2):
+    for j in range(-1,2):
+      if focus_img[loc_i+i,loc_j+j] == 1:
+        continue
+      elif (canny_img[loc_i+i,loc_j+j] - canny_img[loc_i,loc_j]) > 0.4:
+        continue
+      elif focus_img[loc_i+i,loc_j+j] < focus_thresh:
+        #print("Focus Thresh:%f Current Val: %f",{focus_thresh,focus_img[loc_i+i,loc_j+j]})
+        continue
+      
+      elif abs(focus_img[loc_i+i,loc_j+j] - FocusValMean(focus_img,(loc_i+i,loc_j+j),window_size)) < sim_thresh:
+        mask_img[loc_i+i,loc_j+j] = 1
+        changed = True
+
+  return changed
+
+#region growth
+def RegionGrow(img, canny_img,gaus_size = 11,sigma =1, focus_thresh = 0.5, sim_thresh = 0.5, seed_thresh = 0.95,
+                alpha = 1, beta = 1, gamma = 1, window_size = 11):
+
+
+  gaus_kern = GaussianKernal(gaus_size, sigma)
+  gaus_blur = ImgConvolve(img,gaus_kern)
+
+  grad_img, grad_ang = ImgGrad(gaus_blur,'Sobel') 
+
+  LoG_kernal = LoGKernal(gaus_size,sigma)
+  LoG_img = ImgConvolve(img,LoG_kernal)
+
+
+  #Normalize
+  
+  grad_img = grad_img - np.min(grad_img)
+  grad_img = grad_img/np.max(grad_img)
+
+  
+  LoG_img = LoG_img - np.min(LoG_img)
+  LoG_img = LoG_img/np.max(LoG_img)
+
+  canny_img = canny_img - np.min(canny_img)
+  canny_img = canny_img/np.max(canny_img)
+
+  
+
+  img_shape = np.shape(img)
+  img_mask = np.zeros(img_shape)
+
+  img_focus_score = np.zeros(img_shape)
+
+
+  for i in range(np.shape(LoG_img)[0]):
+    for j in range(np.shape(LoG_img)[1]):
+  
+      img_focus_score[i,j] = alpha*LoG_img[i,j] + beta*EdgeDensity(canny_img,(i,j),window_size) + gamma*grad_img[i,j]
+
+  
+
+  seed_thresh_val = np.max(img_focus_score) *seed_thresh
+
+
+  max_loc = (0,0)
+
+
+
+  for i in range(np.shape(LoG_img)[0]):
+    for j in range(np.shape(LoG_img)[1]):
+      if img_focus_score[i,j] >= seed_thresh_val:
+        img_mask[i,j] = 1
+        if img_focus_score[max_loc] < img_focus_score[i,j]:
+          max_loc = (i,j)
+
+  
+
+  focus_thresh_val = focus_thresh * img_focus_score[max_loc]
+
+  sim_thresh_val = sim_thresh * abs(img_focus_score[max_loc] - FocusValMean(img_focus_score,max_loc,window_size))
+
+  not_fin = True
+
+  print("Before Fin loop")
+
+  checked_loc = np.zeros(img_shape)
+
+  count = 0
+  while not_fin:
+    not_fin = False
+    for i in range(1,img_shape[0]-1):
+      for j in range(1,img_shape[1]-1):
+
+        if img_mask[i,j] != 0 and checked_loc[i,j] == 0:
+          checked_loc[i,j] = 1
+          if np.sum(img_mask[i-1:i+2,j-1:j+2]) == 9:
+            continue
+          elif CheckNeighbour(img_focus_score,img_mask,focus_thresh_val,canny_img,sim_thresh_val,(i,j),window_size):
+            not_fin = True
+    
+    count+=1
+    if count%100 == 0:
+      print(count)
+    if count == 5000:
+      break
+
+        
+
+  print("Returning mask")
+  return img_mask
+
+
+
+
+
+
+
+
+
+
+
+def ImgSharpen(img,sigma,kern_size):
+
+  kernal = LoGKernal(kern_size, sigma)
+
+  sharp_img = ImgConvolve(img,kernal)
+
+  return sharp_img
+
+#Canny edge detector algorithm
+def CannyEdge(img,gaus_size = 11, sigma = 1,filt_mode = 'Gaussian', grad_mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
+
+  
+
+  if filt_mode == 'LoG':
+    LoG_kernal = LoGKernal(gaus_size,sigma)
+    first_filt = ImgConvolve(img,LoG_kernal)
+
+  elif filt_mode == GaussianKernal:
+    gaus_kern = GaussianKernal(gaus_size, sigma)
+    first_filt = ImgConvolve(img,gaus_kern)
+
+  else: #Gaussian Blur for unknown mode
+    gaus_kern = GaussianKernal(gaus_size, sigma)
+    first_filt = ImgConvolve(img,gaus_kern)
+  
+
+  grad_img, grad_ang = ImgGrad(first_filt,grad_mode)
+
+  max_supr_img = NonMaxSuppress(grad_img,grad_ang,max_thrsh)
+
+  filt_img = Hysteresis(max_supr_img,hys_h_thrsh,hys_l_thrsh)
+
+  return filt_img
+
 def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.8,k_coef = 1.4):
 
   gaus_kern = GaussianKernal(gaus_size, sigma)
@@ -366,42 +565,6 @@ def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.
   filt_img = Hysteresis(max_supr_img,high_thresh,low_thresh)
 
   return filt_img
-
-
-def ImgSharpen(img,sigma,kern_size):
-
-  kernal = LoGKernal(kern_size, sigma)
-
-  sharp_img = ImgConvolve(img,kernal)
-
-  return sharp_img
-
-#Canny edge detector algorithm
-def CannyEdge(img,gaus_size = 11, sigma = 1,filt_mode = 'Gaussian', grad_mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
-
-  
-
-  if filt_mode == 'LoG':
-    LoG_kernal = LoGKernal(gaus_size,sigma)
-    first_filt = ImgConvolve(img,LoG_kernal)
-
-  elif filt_mode == GaussianKernal:
-    gaus_kern = GaussianKernal(gaus_size, sigma)
-    first_filt = ImgConvolve(img,gaus_kern)
-
-  else: #Gaussian Blur for unknown mode
-    gaus_kern = GaussianKernal(gaus_size, sigma)
-    first_filt = ImgConvolve(img,gaus_kern)
-  
-
-  grad_img, grad_ang = ImgGrad(first_filt,grad_mode)
-
-  max_supr_img = NonMaxSuppress(grad_img,grad_ang,max_thrsh)
-
-  filt_img = Hysteresis(max_supr_img,hys_h_thrsh,hys_l_thrsh)
-
-  return filt_img
-
 
 def Snake(img,x,y, alpha = 1, gamma = 1, beta = 1, GradT = 1, window_size = 11, k = 20):
 
