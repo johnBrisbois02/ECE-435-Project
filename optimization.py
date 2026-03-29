@@ -5,13 +5,15 @@ import tifffile
 from functions import ImgGrad, ImgConvolve, ImageDifference
 import pandas as pd
 import math
-
+import pickle
+from sklearn.model_selection import train_test_split
 class Batch:
 
     def __init__(self,data,truth,batch_num):
         self.data = data
         self.truth = truth
         self.batch_num = batch_num
+        self.name = "batch_" + str(batch_num)
         
         self.num_image = np.shape(data)[0]
 
@@ -21,6 +23,20 @@ class Batch:
         self.var_dif = np.zeros_like(data)
         self.laplacian = np.zeros_like(data)
         self.grad_ang = np.zeros_like(data)
+
+    def save_file(self):
+        
+        filename = self.name + ".dat"
+        with open(filename, "wb") as f:
+            pickle.dump(self,f)
+
+#allows skipping the computation time on inputs
+def BatchLoad(filename):
+
+    with open(filename,"rb") as f:
+        return pickle.load(f)
+
+    
 
 def GetMatrices(cur_batch,window_size=11):
 
@@ -63,26 +79,63 @@ def GetMatrices(cur_batch,window_size=11):
 
     return 
 
-def Train(batch_list):
+def DataSets(batches):
+
+    rows = []
+
+    for batch in batches:
+        for i in range(batch.num_image):
+
+            rows.append({
+                "batch_num": batch.batch_num,
+                "sample_idx": i
+            })
+
+    df = pd.DataFrame(rows)
+
+    train_df,test_df = train_test_split(
+        df,
+        test_size = 0.2,
+        random_state=42,
+        stratify=["batch_num"]
+    )
+    
+
+    return train_df,test_df
+
+def Train(train_df, test_df):
 
     weights = np.ones(6)
 
-
-
+    reg_lambda = 1
 
 
     return weights
 
 def main():
 
-    batch2, batch3, batch6, batch7 = BatchFormat()
+    #batch2, batch3, batch6, batch7 = BatchFormat()
 
-    batches = [batch2, batch3, batch6, batch7]
+    #batch2.save_file()
+    #batch3.save_file()
+    #batch6.save_file()
+    #batch7.save_file()
+
+    batch2 = BatchLoad("batch_2.dat")
+    batch3 = BatchLoad("batch_3.dat")
+    batch6 = BatchLoad("batch_6.dat")
+    batch7 = BatchLoad("batch_7.dat")
+
+    batch_array = [batch2,batch3,batch6,batch7]
+
+    train_df, test_df = DataSets(batch_array)
 
     
 
 
     return
+
+
 
 def BatchFormat():
 
@@ -100,13 +153,15 @@ def BatchFormat():
 
     data_stack_6 = tifffile.imread('Project_Data/6_image.tiff')
     truth_stack_6 = tifffile.imread('Project_Data/6_mask.tiff')
-    batch_6 = Batch(data_stack_6,truth_stack_6,3)
+    batch_6 = Batch(data_stack_6,truth_stack_6,5)
     GetMatrices(batch_6,window_size)
 
     data_stack_7 = tifffile.imread('Project_Data/7_image.tiff')
     truth_stack_7 = tifffile.imread('Project_Data/7_mask.tiff')
-    batch_7 = Batch(data_stack_7,truth_stack_7,3)
+    batch_7 = Batch(data_stack_7,truth_stack_7,7)
     GetMatrices(batch_7,window_size)
+
+    
 
     return batch_2, batch_3, batch_6, batch_7
 

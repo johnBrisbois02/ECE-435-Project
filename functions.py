@@ -475,7 +475,7 @@ def ImageDifference(img,derivative = 'interpolate'):
 
   img_der = np.zeros(img_shape)
   #uses abs since dont care about sign
-  for k in range(img_shape[0]):
+  for k in range(1,img_shape[0]-1):
 
     if derivative == 'forward':
       img_der[k,:,:] ==  abs(img[k,:,:] - img[k+1,:,:])
