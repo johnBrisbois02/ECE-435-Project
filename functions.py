@@ -86,7 +86,7 @@ def ImgConvolve(img, kernel):
 
 
 #Convolutes image with a given kernal reutrns magnitude and angle, using sobel or Prewitt is usually considered the image gradient
-def ImgGrad(img, mode = 'Sobel',):
+def ImgGrad(img, mode = 'Sobel', val_mode = 'default'):
   
   x_kernal = np.zeros((3,3))
   y_kernal = np.zeros((3,3))
@@ -116,8 +116,10 @@ def ImgGrad(img, mode = 'Sobel',):
 
   for i in range(np.shape(grad_x)[0]):
     for j in range(np.shape(grad_y)[1]):
-
-      GradImg[i,j] = math.sqrt((grad_x[i,j]**2)+(grad_y[i,j]**2))
+      if val_mode == "Tenengrad":
+        GradImg[i,j] = (grad_x[i,j]**2)+(grad_y[i,j]**2)
+      else:
+        GradImg[i,j] = math.sqrt((grad_x[i,j]**2)+(grad_y[i,j]**2))
       ImgAng[i,j] = math.atan2(grad_y[i,j],grad_x[i,j])
 
   return GradImg, ImgAng
@@ -282,67 +284,22 @@ def Hysteresis(img,high_thresh,low_thresh):
   return filt_img
 
 
-def HistEqual(im):
-
-
-  img_dim = np.shape(im)
-
-  tot_pixel = img_dim[0]*img_dim[1]
-
-  hist = np.zeros(256)
-
-  for i in range(img_dim[0]):
-    for j in range(img_dim[1]):
-
-      cur_val = round(im[i,j])
-      hist[cur_val] = hist[cur_val] + 1
-
-
-  orgHist = np.copy(hist)
-
-  hist_cdf = np.zeros(256)
-  hist_cdf[0] = hist[0]/tot_pixel
-  for i in range(1,255):
-    hist_cdf[i] = hist_cdf[i-1] + hist[i]/tot_pixel
-    hist_cdf[i-1] = round(255*hist_cdf[i-1])
-  hist_cdf[255] = round(255*hist_cdf[255])
-
-
-  equal_img = np.copy(im)
-  heHist = np.zeros(256)
-
-  for i in range(img_dim[0]):
-    for j in range(img_dim[1]):
-
-      cur_lev = round(equal_img[i][j])
-      new_lev = round(hist_cdf[cur_lev])
-      equal_img[i][j] = new_lev
-      heHist[new_lev] = heHist[new_lev] + 1
-
-  
-
-  imgHE = equal_img
-
-
-  return imgHE
-
-
 
 def EdgeDensity(canny_img,loc,window_size):
   img_shape = np.shape(canny_img)
   start_i = loc[0]-math.floor(window_size/2)
   start_j = loc[1]-math.floor(window_size/2)
 
-  end_i = loc[0]+math.floor(window_size/2)
-  end_j = loc[1]+math.floor(window_size/2)
+  end_i = loc[0]+math.floor(window_size/2)+1
+  end_j = loc[1]+math.floor(window_size/2)+1
 
   if end_i>=img_shape[0]:
     end_i = img_shape[0]
   if end_j>=img_shape[1]:
     end_j = img_shape[1]
 
-  #val = np.sum(canny_img[start_i:end_i,start_j:end_j]) / ((end_i-start_i)+(end_j - start_j))
-  val = np.sum(canny_img[start_i:end_i,start_j:end_j])
+  val = np.sum(canny_img[start_i:end_i,start_j:end_j]) / ((end_i-start_i)*(end_j - start_j))
+  #val = np.sum(canny_img[start_i:end_i,start_j:end_j])
   return val
 
 #start with tenegrad, returns pixel (location_val - avg)^2
@@ -354,10 +311,16 @@ def FocusValMean(img,loc,window_size):
 
   img_shape = np.shape(img)
 
-  end_i = loc[0]+math.floor(window_size/2)
-  end_j = loc[1]+math.floor(window_size/2)
+  end_i = loc[0]+math.floor(window_size/2)+1
+  end_j = loc[1]+math.floor(window_size/2)+1
 
-  norm_val = (end_i-start_i) + (end_j-start_j)
+  if end_i>=img_shape[0]:
+    end_i = img_shape[0]
+  if end_j>=img_shape[1]:
+    end_j = img_shape[1]
+
+
+  norm_val = (end_i-start_i) * (end_j-start_j)
 
   avg = np.sum(img[start_i:end_i,start_j:end_j])
 
@@ -366,11 +329,7 @@ def FocusValMean(img,loc,window_size):
   return (avg/norm_val)
 
 
-#Not working properly
-
-
-
-def CheckNeighbour(focus_img,mask_img,focus_thresh,canny_img,sim_thresh,loc,window_size):
+def CheckNeighbour(focus_img,mask_img,focus_thresh,canny_img,sim_thresh,loc,window_size,edge_stop_thresh):
 
   loc_i = loc[0]
   loc_j = loc[1]
@@ -378,10 +337,10 @@ def CheckNeighbour(focus_img,mask_img,focus_thresh,canny_img,sim_thresh,loc,wind
 
   for i in range(-1,2):
     for j in range(-1,2):
-      if focus_img[loc_i+i,loc_j+j] == 1:
+      if mask_img[loc_i+i,loc_j+j] == 1:
         continue
-      elif (canny_img[loc_i+i,loc_j+j] - canny_img[loc_i,loc_j]) > 0.4:
-        continue
+      #elif (canny_img[loc_i+i,loc_j+j] - canny_img[loc_i,loc_j]) > edge_stop_thresh:
+      #  continue
       elif focus_img[loc_i+i,loc_j+j] < focus_thresh:
         #print("Focus Thresh:%f Current Val: %f",{focus_thresh,focus_img[loc_i+i,loc_j+j]})
         continue
@@ -393,7 +352,7 @@ def CheckNeighbour(focus_img,mask_img,focus_thresh,canny_img,sim_thresh,loc,wind
   return changed
 
 #region growth
-def RegionGrow(img, canny_img,gaus_size = 11,sigma =1, focus_thresh = 0.5, sim_thresh = 0.5, seed_thresh = 0.95,
+def RegionGrow(img, canny_img,gaus_size = 11,sigma =1, focus_thresh = 0.5, sim_thresh = 0.5, seed_thresh = 0.95, edge_stop_thresh = 0.4,
                 alpha = 1, beta = 1, gamma = 1, window_size = 11):
 
 
@@ -405,14 +364,18 @@ def RegionGrow(img, canny_img,gaus_size = 11,sigma =1, focus_thresh = 0.5, sim_t
   LoG_kernal = LoGKernal(gaus_size,sigma)
   LoG_img = ImgConvolve(img,LoG_kernal)
 
+  
 
   #Normalize
   
   grad_img = grad_img - np.min(grad_img)
   grad_img = grad_img/np.max(grad_img)
 
-  
-  LoG_img = LoG_img - np.min(LoG_img)
+  #for tenengrad
+  #grad_img = np.square(grad_img)
+
+  #LoG_img = LoG_img - np.min(LoG_img)
+  LoG_img = np.abs(LoG_img)
   LoG_img = LoG_img/np.max(LoG_img)
 
   canny_img = canny_img - np.min(canny_img)
@@ -455,11 +418,11 @@ def RegionGrow(img, canny_img,gaus_size = 11,sigma =1, focus_thresh = 0.5, sim_t
 
   not_fin = True
 
-  print("Before Fin loop")
+  
 
   checked_loc = np.zeros(img_shape)
 
-  count = 0
+  
   while not_fin:
     not_fin = False
     for i in range(1,img_shape[0]-1):
@@ -469,37 +432,205 @@ def RegionGrow(img, canny_img,gaus_size = 11,sigma =1, focus_thresh = 0.5, sim_t
           checked_loc[i,j] = 1
           if np.sum(img_mask[i-1:i+2,j-1:j+2]) == 9:
             continue
-          elif CheckNeighbour(img_focus_score,img_mask,focus_thresh_val,canny_img,sim_thresh_val,(i,j),window_size):
+          elif CheckNeighbour(img_focus_score,img_mask,focus_thresh_val,canny_img,sim_thresh_val,(i,j),window_size,edge_stop_thresh):
             not_fin = True
     
-    count+=1
-    if count%100 == 0:
-      print(count)
-    if count == 5000:
-      break
 
         
 
-  print("Returning mask")
+  
   return img_mask
 
+def LocalVar(img,window_size,loc):
+
+  start_i = loc[0]-math.floor(window_size/2)
+  start_j = loc[1]-math.floor(window_size/2)
+
+  img_shape = np.shape(img)
+
+  end_i = loc[0]+math.floor(window_size/2)+1
+  end_j = loc[1]+math.floor(window_size/2)+1
+
+  if end_i>=img_shape[0]:
+    end_i = img_shape[0]
+  if end_j>=img_shape[1]:
+    end_j = img_shape[1]
+
+
+  loc_mean = np.sum(img[start_i:end_i,start_j:end_j])
+
+  var = 0
+  for i in range(start_i,end_i):
+    for j in range(start_j,end_j):
+      var += (img[i,j] - loc_mean)**2
+
+  var = var / ((end_i-start_i) * (end_j-start_j))
+
+  return var
+
+
+def ImageDifference(img,derivative = 'interpolate'):
+
+  img_shape = np.shape(img)
+
+  img_der = np.zeros(img_shape)
+  #uses abs since dont care about sign
+  for k in range(img_shape[0]):
+
+    if derivative == 'forward':
+      img_der[k,:,:] ==  abs(img[k,:,:] - img[k+1,:,:])
+    elif derivative == 'backward':
+      img_der[k,:,:] ==  abs(img[k,:,:] - img[k-1,:,:])
+    elif derivative == 'center':
+      img_der[k,:,:] ==  abs(img[k+1,:,:] - img[k-1,:,:])
+    elif derivative == 'interpolate':
+      img_der[k,:,:] ==  abs(img[k+1,:,:] - img[k-1,:,:])
+
+  return img_der
+
+
+
+def FocusDiffernceMask(img, window_size = 11, kernel_mode = 4, derivative = 'backward',thresh = 0.5):
+  #return focus back derivative currently
+  img_shape = np.shape(img)
+  print(img_shape)
+
+  if kernel_mode == 4:
+    lap_kernel = [[0,1,0],[1,-4,1],[0,1,0]]
+  elif kernel_mode == 8:
+    lap_kernel = [[1,1,1],[1,-8,1],[1,1,1]]
+  else:
+    lap_kernel = [[0,1,0],[1,-4,1],[0,1,0]]
+  
+  lap_img = np.zeros((img_shape[1],img_shape[2]))
+  pad_w = math.floor(window_size/2)
+  lap_var = np.zeros(img_shape)
+
+
+
+  for k in range(img_shape[0]):
+    lap_img = ImgConvolve(img[k,:,:],lap_kernel)
+    lap_pad = np.pad(lap_img,pad_w,mode='reflect')
+    for i in range(img_shape[1]):
+      for j in range(img_shape[2]):
+        lap_var[k,i,j] = np.var(lap_pad[i:(i+window_size),j:(j+window_size) ])
+
+  var_dif_back = np.zeros(img_shape)
+  #var_dif_for = np.zeros(img_shape)
+  #var_dif_cen = np.zeros(img_shape)
+  #dont care about sign on magnitude so use absolute val
+  for k in range(1,img_shape[0]-1):
+    
+    var_dif_back[k,:,:] = abs(lap_var[k,:,:] - lap_var[k-1,:,:])
+    
+    #var_dif_for[k,:,:] = abs(lap_var[k,:,:] - lap_var[k+1,:,:])
+    
+    #var_dif_cen[k,:,:] = abs(lap_var[k+1,:,:] - lap_var[k-1,:,:])
+
+    
+  '''
+  img_mask_back = np.zeros(img_shape,dtype=np.uint8)
+  img_mask_for  = np.zeros(img_shape,dtype=np.uint8)
+  img_mask_cen  = np.zeros(img_shape,dtype=np.uint8)
+
+  for k in range(1,img_shape[0]-1):
+    thresh_backward = np.max(var_dif_back[k,:,:])*thresh
+    thresh_forward = np.max(var_dif_for[k,:,:])*thresh
+    thresh_center = np.max(var_dif_cen[k,:,:])*thresh
+    for i in range(img_shape[1]):
+      for j in range(img_shape[2]):
+        if var_dif_back[k,i,j] >= thresh_backward:
+          img_mask_back[k,i,j] = 255
+        if var_dif_for[k,i,j] >= thresh_forward:
+          img_mask_for[k,i,j] = 255
+        if var_dif_cen[k,i,j] >= thresh_center:
+          img_mask_cen[k,i,j] = 255
+  '''
+ #return img_mask_back, img_mask_for, img_mask_cen
+  return var_dif_back
+  
+
+
+def TenengradMask(img,canny_img,window_size = 11, alpha = 1, beta = 1, gamma = 1,seed_thresh = 0.9,grow_thresh = 0.6):
+
+  img_shape = np.shape(img)
+
+  img_grad, img_ang = ImgGrad(img,'Sobel')
+
+  tenen_val = np.square(img_grad)
+
+  #lap_kernel = [[0,1,0],[1,-4,1],[0,1,0]]
+  lap_kernel = [[1,1,1],[1,-8,1],[1,1,1]]
+  lap_img = ImgConvolve(img,lap_kernel)
+
+  lap_var = np.zeros_like(img)
+  pad_w = math.floor(window_size/2)
+  lap_pad = np.pad(lap_img,pad_w,mode='reflect')
+
+  for i in range(img_shape[0]):
+    for j in range(img_shape[1]):
+      lap_var[i,j] = np.var(lap_pad[i:(i+window_size),j:(j+window_size) ])
+  
+  
+  #normalize
+  lap_var = lap_var - np.min(lap_var)
+  lap_var = lap_var / np.max(lap_var)
+
+  tenen_val = tenen_val - np.min(tenen_val)
+  tenen_val = tenen_val / np.max(tenen_val)
+
+  focus_val = (alpha*tenen_val) + (beta*lap_var)
+
+  canny_img = canny_img - np.min(canny_img)
+  canny_img = canny_img * (1/np.max(canny_img))
+
+  for i in range(img_shape[0]):
+    for j in range(img_shape[1]):
+      focus_val[i,j] = focus_val[i,j] + gamma*EdgeDensity(canny_img,(i,j),window_size)
+
+
+
+  focus_val = focus_val - np.min(focus_val)
+
+  focus_val = focus_val * (1/np.max(focus_val))
+
+
+  img_mask = np.zeros_like(img)
+
+  
+
+  for i in range(img_shape[0]):
+    for j in range(img_shape[1]):
+      if focus_val[i,j] >= seed_thresh:
+        img_mask[i,j] = 1
+
+  not_fin = True
+
+  check_loc = np.zeros_like(img)
+
+  while not_fin:
+    not_fin = False
+    for i in range(img_shape[0]):
+      for j in range(img_shape[1]):
+        if img_mask[i,j] == 0 or check_loc[i,j] == 1:
+          continue
+        else:
+          check_loc[i,j] = 1
+          for ii in range(-1,2):
+            if (i + ii >= img_shape[0]) or (i+ii < 0):
+              continue
+            for jj in range(-1,2):
+              if (j + jj >= img_shape[1]) or (j + jj < 0):
+                continue
+              if focus_val[i+ii,j+jj] >= grow_thresh and img_mask[i+ii,j+jj] == 0:
+                img_mask[i+ii,j+jj] = 1
+                not_fin = True
 
 
 
 
+  return img_mask
 
-
-
-
-
-
-def ImgSharpen(img,sigma,kern_size):
-
-  kernal = LoGKernal(kern_size, sigma)
-
-  sharp_img = ImgConvolve(img,kernal)
-
-  return sharp_img
 
 #Canny edge detector algorithm
 def CannyEdge(img,gaus_size = 11, sigma = 1,filt_mode = 'Gaussian', grad_mode = 'Sobel', max_thrsh = 0.8, hys_h_thrsh=0.7, hys_l_thrsh=0.2):
@@ -526,7 +657,7 @@ def CannyEdge(img,gaus_size = 11, sigma = 1,filt_mode = 'Gaussian', grad_mode = 
   filt_img = Hysteresis(max_supr_img,hys_h_thrsh,hys_l_thrsh)
 
   return filt_img
-
+#doesnt work well
 def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.8,k_coef = 1.4):
 
   gaus_kern = GaussianKernal(gaus_size, sigma)
@@ -566,76 +697,3 @@ def ImprovedCanny(img,gaus_size = 11, sigma = 1,mode = 'Gravity', max_thrsh = 0.
 
   return filt_img
 
-def Snake(img,x,y, alpha = 1, gamma = 1, beta = 1, GradT = 1, window_size = 11, k = 20):
-
-  img_size = np.shape(img)
-
-  #window size needs to be odd
-  if window_size%2 == 0:
-    window_size += 1
-
-  eps = 1e-8
-
-  global_norm = GradT * (np.max(img) - np.min(img))
-  pos_buf = math.floor(window_size/2)
-  padded_img = np.pad(img,pos_buf)
-
-  x = x + pos_buf
-  y = y + pos_buf
-  x_prev = x[-1]
-  y_prev = y[-1]
-
-  numSeeds = len(x)
-
-  Econt = np.zeros((window_size,window_size))
-  Ecurv = np.zeros((window_size,window_size))
-
-
-  for i in range(k):
-    for j in range(numSeeds):
-      nx_sd = j+1
-
-      if nx_sd >= numSeeds:
-        nx_sd = 0
-
-      Econt = Econt*0
-      Ecurv = Ecurv*0
-      #col,row indexing for some reason
-      Egrad = padded_img[(y[j]-pos_buf):(y[j]+pos_buf+1),(x[j]-pos_buf):(x[j]+pos_buf+1)]
-      for w in range(-pos_buf,pos_buf+1):
-
-        cur_x = x[j]+w
-        for h in range(-pos_buf,pos_buf+1):
-          cur_y = y[j]+h
-          Econt[w+pos_buf,h+pos_buf] = (x[nx_sd]-cur_x)**2 +(cur_x- x_prev)**2 + (y[nx_sd]-cur_y)**2 + (cur_y - y_prev)**2
-          Ecurv[w+pos_buf,h+pos_buf] = (x[nx_sd] - 2*(cur_x) + x_prev)**2 + (y[nx_sd]-2*(cur_y) + y_prev)**2
-
-      #normalize
-
-      cont_range = max((np.max(Econt)-np.min(Econt)),eps)
-      Econt = Econt - np.min(Econt)
-      Econt = Econt * (alpha/(2*cont_range))
-      curv_range = max((np.max(Ecurv)-np.min(Ecurv)),eps)
-      Ecurv = Ecurv - np.min(Ecurv)
-      Ecurv = Ecurv * (beta/(2*curv_range))
-
-      grad_norm = max((np.max(Egrad)-np.min(Egrad)),global_norm)
-      Egrad = Egrad - np.min(Egrad)
-      Egrad = Egrad *(gamma/grad_norm)
-      Etot = Ecurv + Econt - Egrad
-
-      min_row, min_col = np.unravel_index(np.argmin(Etot), Etot.shape)
-
-      x_prev = x[j]
-      y_prev = y[j]
-      x[j] = x[j] + min_row - pos_buf
-      y[j] = y[j] + min_col - pos_buf
-      
-
-  img_fin = np.zeros(img_size)
-
-  for kk in range(numSeeds):
-    img_fin[y[kk],x[kk]] = 255
-
-
-  return img_fin
